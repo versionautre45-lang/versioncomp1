@@ -4,8 +4,8 @@ export interface InternDTO {
   id: number;
   userId: number;
   email: string;
-  nom: string;
-  prenom: string;
+  firstName: string;
+  lastName: string;
   phone: string;
   school: string;
   department: string;
@@ -13,9 +13,9 @@ export interface InternDTO {
   endDate: string;
   status: string;
   encadreurId: number;
-  encadreurNom?: string;
-  encadreurPrenom?: string;
+  encadreurName?: string;
   projectId: number | null;
+  projectTitle?: string;
   cv: string | null;
   notes: string | null;
 }
@@ -24,7 +24,7 @@ export interface CreateInternRequest {
   email: string;
   firstName: string;
   lastName: string;
-  phone: string;
+  phone?: string;
   school: string;
   department: string;
   startDate: string;

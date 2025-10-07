@@ -1,215 +1,222 @@
 import React, { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
-import { encadreurService } from '../../services/encadreurService';
-import { internService } from '../../services/internService';
+import { UserPlus, Search, Mail, Phone, GraduationCap, Calendar } from 'lucide-react';
+import { internService, InternDTO } from '../../services/internService';
+import { useAuth } from '../../contexts/AuthContext';
 import { useApiError } from '../../hooks/useApiError';
+import InternFormModal from '../Modals/InternFormModal';
+import InternDetailModal from '../Modals/InternDetailModal';
 
-interface InternFormModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (data: any) => void;
-  defaultEncadreurId?: number | null; // Ajout de la prop
-}
-
-export default function InternFormModal({
-  isOpen,
-  onClose,
-  onSubmit,
-  defaultEncadreurId,
-}: InternFormModalProps) {
-  const [formData, setFormData] = useState({
-    prenom: '',
-    nom: '',
-    email: '',
-    department: '',
-    school: '',
-    startDate: '',
-    endDate: '',
-    encadreurId: defaultEncadreurId || '',
-  });
-
-  const [encadreurs, setEncadreurs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+export default function Interns() {
+  const { authUser } = useAuth();
+  const [interns, setInterns] = useState<InternDTO[]>([]);
+  const [filteredInterns, setFilteredInterns] = useState<InternDTO[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedIntern, setSelectedIntern] = useState<InternDTO | null>(null);
+  const [loading, setLoading] = useState(true);
   const handleApiError = useApiError();
 
   useEffect(() => {
-    if (isOpen) {
-      loadEncadreurs();
-    }
-  }, [isOpen]);
+    loadInterns();
+  }, [authUser]);
 
-  useEffect(() => {
-    if (defaultEncadreurId) {
-      setFormData((prev) => ({ ...prev, encadreurId: defaultEncadreurId }));
-    }
-  }, [defaultEncadreurId]);
-
-  const loadEncadreurs = async () => {
-    try {
-      const data = await encadreurService.getAllEncadreurs();
-      setEncadreurs(data);
-    } catch (error: any) {
-      handleApiError(error, 'Erreur lors du chargement des encadreurs');
-    }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const loadInterns = async () => {
     try {
       setLoading(true);
-      await internService.createIntern(formData);
-      onSubmit(formData);
+      let data: InternDTO[];
+
+      if (authUser?.role === 'ADMIN') {
+        data = await internService.getAllInterns();
+      } else if (authUser?.role === 'ENCADREUR') {
+        const userId = authUser.profile.userID;
+        data = await internService.getAllInterns({ encadreurUserId: userId });
+      } else {
+        data = [];
+      }
+
+      setInterns(data);
+      setFilteredInterns(data);
     } catch (error: any) {
-      handleApiError(error, 'Erreur lors de la création du stagiaire');
+      handleApiError(error, 'Erreur lors du chargement des stagiaires');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    let filtered = [...interns];
+
+    if (searchQuery) {
+      filtered = filtered.filter(
+        (intern) =>
+          intern.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          intern.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          intern.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          intern.school.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter((intern) => intern.status === statusFilter);
+    }
+
+    setFilteredInterns(filtered);
+  }, [searchQuery, statusFilter, interns]);
+
+  const handleInternClick = (intern: InternDTO) => {
+    setSelectedIntern(intern);
+    setIsDetailModalOpen(true);
+  };
+
+  const handleFormSubmit = () => {
+    setIsFormModalOpen(false);
+    loadInterns();
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig: Record<string, { label: string; className: string }> = {
+      PENDING: { label: 'En attente', className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+      ACTIVE: { label: 'Actif', className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+      COMPLETED: { label: 'Terminé', className: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' },
+      CANCELLED: { label: 'Annulé', className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+    };
+
+    const config = statusConfig[status] || statusConfig.PENDING;
+    return (
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.className}`}>
+        {config.label}
+      </span>
+    );
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg max-w-lg w-full p-6 relative">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Stagiaires</h2>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">
+            {authUser?.role === 'ADMIN' && 'Gestion de tous les stagiaires'}
+            {authUser?.role === 'ENCADREUR' && 'Mes stagiaires assignés'}
+          </p>
+        </div>
+
         <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+          onClick={() => setIsFormModalOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition-all duration-200 shadow-md hover:shadow-lg"
         >
-          <X className="h-5 w-5" />
-        </button>
-
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
+          <UserPlus className="h-5 w-5" />
           Ajouter un stagiaire
-        </h2>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <input
-              type="text"
-              name="prenom"
-              value={formData.prenom}
-              onChange={handleChange}
-              placeholder="Prénom"
-              className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-              required
-            />
-            <input
-              type="text"
-              name="nom"
-              value={formData.nom}
-              onChange={handleChange}
-              placeholder="Nom"
-              className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-              required
-            />
-          </div>
-
-          <input
-            type="email"
-            name="email"
-            value={formData.email}
-            onChange={handleChange}
-            placeholder="Email"
-            className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-            required
-          />
-
-          <input
-            type="text"
-            name="department"
-            value={formData.department}
-            onChange={handleChange}
-            placeholder="Département"
-            className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-            required
-          />
-
-          <input
-            type="text"
-            name="school"
-            value={formData.school}
-            onChange={handleChange}
-            placeholder="École"
-            className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-            required
-          />
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm text-gray-700 dark:text-gray-300">Date de début</label>
-              <input
-                type="date"
-                name="startDate"
-                value={formData.startDate}
-                onChange={handleChange}
-                className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-                required
-              />
-            </div>
-            <div>
-              <label className="text-sm text-gray-700 dark:text-gray-300">Date de fin</label>
-              <input
-                type="date"
-                name="endDate"
-                value={formData.endDate}
-                onChange={handleChange}
-                className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm text-gray-700 dark:text-gray-300 mb-1 block">Encadreur</label>
-            <select
-              name="encadreurId"
-              value={formData.encadreurId}
-              onChange={handleChange}
-              disabled={!!defaultEncadreurId} // 🔒 verrouillé si encadreur connecté
-              className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-              required
-            >
-              <option value="">Sélectionnez un encadreur</option>
-              {encadreurs.map((enc) => (
-                <option key={enc.id} value={enc.id}>
-                  {enc.prenom} {enc.nom}
-                </option>
-              ))}
-            </select>
-
-            {defaultEncadreurId && (
-              <p className="text-xs text-gray-500 mt-1">
-                (Sélection automatique : votre profil encadreur)
-              </p>
-            )}
-          </div>
-
-          <div className="flex justify-end space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            >
-              Annuler
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-6 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 transition-all duration-200 shadow-md hover:shadow-lg"
-            >
-              {loading ? 'Ajout...' : 'Créer'}
-            </button>
-          </div>
-        </form>
+        </button>
       </div>
+
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Rechercher un stagiaire..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+          />
+        </div>
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+        >
+          <option value="all">Tous les statuts</option>
+          <option value="PENDING">En attente</option>
+          <option value="ACTIVE">Actif</option>
+          <option value="COMPLETED">Terminé</option>
+          <option value="CANCELLED">Annulé</option>
+        </select>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Chargement des stagiaires...</p>
+        </div>
+      ) : filteredInterns.length === 0 ? (
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-12 text-center">
+          <GraduationCap className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Aucun stagiaire trouvé</h3>
+          <p className="text-gray-600 dark:text-gray-400">
+            {searchQuery || statusFilter !== 'all'
+              ? 'Aucun résultat ne correspond à vos critères de recherche.'
+              : 'Commencez par ajouter votre premier stagiaire.'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredInterns.map((intern) => (
+            <div
+              key={intern.id}
+              onClick={() => handleInternClick(intern)}
+              className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer border border-gray-200 dark:border-gray-700"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 bg-gradient-to-br from-orange-500 to-red-500 rounded-full flex items-center justify-center text-white font-semibold">
+                    {intern.firstName[0]}{intern.lastName[0]}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                      {intern.firstName} {intern.lastName}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{intern.department}</p>
+                  </div>
+                </div>
+                {getStatusBadge(intern.status)}
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                  <Mail className="h-4 w-4" />
+                  <span className="truncate">{intern.email}</span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                  <Phone className="h-4 w-4" />
+                  <span>{intern.phone}</span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                  <GraduationCap className="h-4 w-4" />
+                  <span className="truncate">{intern.school}</span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                  <Calendar className="h-4 w-4" />
+                  <span>
+                    {new Date(intern.startDate).toLocaleDateString()} - {new Date(intern.endDate).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <InternFormModal
+        isOpen={isFormModalOpen}
+        onClose={() => setIsFormModalOpen(false)}
+        onSubmit={handleFormSubmit}
+        defaultEncadreurId={authUser?.role === 'ENCADREUR' ? authUser.profile.userID : null}
+      />
+
+      {selectedIntern && (
+        <InternDetailModal
+          isOpen={isDetailModalOpen}
+          onClose={() => {
+            setIsDetailModalOpen(false);
+            setSelectedIntern(null);
+          }}
+          intern={selectedIntern}
+          onUpdate={loadInterns}
+        />
+      )}
     </div>
   );
 }

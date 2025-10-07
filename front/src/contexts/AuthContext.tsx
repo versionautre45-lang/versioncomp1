@@ -74,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           firstName: user.prenom,
           lastName: user.nom,
           email: user.email,
+          userID: user.id,
           avatar: `https://ui-avatars.com/api/?name=${user.prenom}+${user.nom}&background=random`,
         },
         role: user.role,
